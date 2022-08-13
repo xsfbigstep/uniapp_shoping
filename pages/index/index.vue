@@ -1,7 +1,7 @@
 <template>
 	<view class="index">
 		首页
-		<view class="iconfont icon-gouwucheman"></view>
+		<view class="iconfont icon-sousuo"></view>
 	</view>
 </template>
 
