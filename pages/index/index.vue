@@ -14,42 +14,53 @@
 		</scroll-view>
 		
 		 
-		<swiper  @change='onChangeTab' :current="topBarIndex" :style="'height:'+clentHeight+'px;'">
+		<swiper @change='onChangeTab' :current="topBarIndex" :style="'height:'+clentHeight+'px;'">
 			<swiper-item 
-				v-for='(item,index) in topBar'
+				v-for='(item,index) in newTopBar'
 				:key='index'
 			>
-				<view class='home-data'>
-					<Banner></Banner>
-					<Icons></Icons>
-					<Card cardTitle='热销爆品'></Card>
-					<Hot></Hot>
-					<Card cardTitle='推荐店铺'></Card>
-					<Shop></Shop>
-					<Card cardTitle='为您推荐'></Card>
-					<CommodityList></CommodityList>
-				</view>
+				<scroll-view scroll-y="true"  :style="'height:'+clentHeight+'px;'" @scrolltolower='loadMore(index)'>
+					<block v-if='item.data.length > 0 '>
+						<block v-for='(k,i) in item.data' :key='i'>
+							
+							<!--推荐-->
+							<IndexSwiper v-if='k.type==="swiperList"' :dataList='k.data'></IndexSwiper>
+							<template v-if='k.type==="recommendList"' >
+								<Recommend :dataList='k.data'></Recommend>
+								<Card cardTitle='猜你喜欢'></Card>
+							</template>
+							
+							<!--运动户外....-->
+							<Banner v-if='k.type==="bannerList"' :dataList='k.imgUrl'></Banner>
+							
+							<template v-if='k.type==="iconsList"'>
+								<Icons :dataList='k.data'></Icons>
+								<Card cardTitle='热销爆品'></Card>
+							</template>
+							
+							<template v-if='k.type==="hotList"'>
+								<Hot :dataList='k.data'></Hot>
+								<Card cardTitle='推荐店铺'></Card>
+							</template>
+							
+							<template v-if='k.type==="shopList"'>
+								<Shop :dataList='k.data'></Shop>
+								<Card cardTitle='为您推荐'></Card>
+							</template>
+							
+							<CommodityList v-if='k.type==="commodityList"' :dataList='k.data'></CommodityList>
+							
+						</block>
+					</block>
+					<view v-else>
+						暂无数据...
+					</view>
+					<view class='load-text f-color'>
+						{{item.loadText}}
+					</view>
+				</scroll-view>
 			</swiper-item>
 		</swiper>
-		
-		
-		<!-- 推荐模版 -->
-		<!-- <IndexSwiper></IndexSwiper>
-		<Recommend></Recommend>
-		<Card cardTitle='猜你喜欢'></Card>
-		<CommodityList></CommodityList> -->
-		
-		
-		<!-- 其他模版：运动户外、美妆... -->
-		<!-- <Banner></Banner>
-		<Icons></Icons>
-		<Card cardTitle='热销爆品'></Card>
-		<Hot></Hot>
-		<Card cardTitle='推荐店铺'></Card>
-		<Shop></Shop>
-		<Card cardTitle='为您推荐'></Card>
-		<CommodityList></CommodityList> -->
-		
 	</view>
 </template>
 
@@ -72,15 +83,9 @@
 				//内容块的高度值
 				clentHeight:0,
 				//顶栏数据
-				topBar:[
-					{name:'推荐'},
-					{name:'运动户外'},
-					{name:'服饰内衣'},
-					{name:'鞋靴箱包'},
-					{name:'美妆个护'},
-					{name:'家居数码'},
-					{name:'食品母婴'}
-				]
+				topBar:[],
+				//承载数据
+				newTopBar:[]
 			}
 		},
 		components:{
@@ -94,26 +99,113 @@
 			Shop
 		},
 		onLoad() {
-			
+			this.__init();
 		},
 		onReady() {
 			
-			let view = uni.createSelectorQuery().select(".home-data");
-			view.boundingClientRect(data => {
-			    this.clentHeight = data.height;
-			}).exec();
+			uni.getSystemInfo({
+				success: (res) => {
+					this.clentHeight = res.windowHeight - uni.upx2px(80)-this.getClientHeight();
+				}
+			})
 			
 		},
 		methods:{
+			//请求首页数据
+			__init(){
+				uni.request({
+					url:"http://192.168.8.6:3000/api/index_list/data",
+					success: (res) => {
+						let data = res.data.data;
+						this.topBar = data.topBar;
+						this.newTopBar = this.initData(data);
+					}
+				})
+			},
+			//添加数据
+			initData(res){
+				let arr = [];
+				for(let i =0;i<this.topBar.length;i++){
+					let obj = {
+						data:[],
+						load:"first",
+						loadText:"上拉加载更多..."
+					}
+					//获取首次数据
+					if(i==0){
+						obj.data = res.data;
+					}
+					arr.push(obj)
+				}
+				return arr;
+			},
+			//点击顶栏
 			changeTab(index){
 				if(this.topBarIndex === index){
 					return ;
 				}
 				this.topBarIndex = index;
 				this.scrollIntoIndex = 'top'+index;
+				
+				//每一次滑动==》赋值first
+				if( this.newTopBar[this.topBarIndex].load  ==='first'){
+					this.addData();
+				}
 			},
+			//对应滑动
 			onChangeTab(e){
 				this.changeTab(e.detail.current);
+			},
+			//获取可视区域高度【兼容】
+			getClientHeight(){
+				const res = uni.getSystemInfoSync();
+				const system = res.platform;
+				if( system ==='ios' ){
+					return 44+res.statusBarHeight;
+				}else if( system==='android' ){
+					return 48+res.statusBarHeight;
+				}else{
+					return 0;
+				}
+			},
+			//对应显示不同数据
+			addData(callback){
+				//拿到索引
+				let index = this.topBarIndex;
+				//拿到id===>不同的板块
+				let id = this.topBar[index].id;
+				//请求不同的数据
+				let page = Math.ceil(this.newTopBar[index].data.length / 5) + 1; 
+				console.log(page);
+				uni.request({
+					url:'http://192.168.8.6:3000/api/index_list/'+id+'/data/'+page+'',
+					success: (res) => {
+						if(res.statusCode != 200){
+							return;
+						}else{
+							let data = res.data.data;
+							this.newTopBar[index].data = [...this.newTopBar[index].data,...data];
+						}
+					}
+				})
+				
+				
+				//当请求结束后，重新赋值
+				this.newTopBar[index].load='last';
+				
+				if(typeof callback==='function'){
+					callback();
+				}
+				
+			},
+			//上拉加载更多
+			loadMore(index){
+				
+				this.newTopBar[index].loadText = '加载中...';
+				//请求完数据 ，文字提示信息又换成【上拉加载更多...】
+				this.addData(()=>{
+					this.newTopBar[index].loadText = '上拉加载更多...';
+				})
 			}
 		}
 	}
@@ -133,5 +225,10 @@
 .f-active-color{
 	padding:10rpx 0;
 	border-bottom:6rpx solid #49BDFB;
+}
+.load-text{
+	border-top:2rpx solid #636263;
+	line-height: 60rpx;
+	text-align: center;
 }
 </style>
